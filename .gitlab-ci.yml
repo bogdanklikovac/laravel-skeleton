@@ -1,0 +1,121 @@
+stages:
+  - sast
+  - security-scan
+  - deploy
+  - utils
+  - composer
+  - phpmetrics
+
+cache:
+  paths:
+    - vendor/
+
+sast:
+  stage: sast
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
+security:scan:development:
+  stage: security-scan
+  environment:
+    name: development
+  script:
+    - security-checker --path=.
+  only:
+    - development
+  tags:
+    - skynet
+
+deploy:development:
+  image: pipelinecomponents/deployer:0.15.0
+  stage: deploy
+  environment:
+    name: staging
+  before_script:
+    - 'command -v ssh-agent >/dev/null || ( apk add --update --no-cache openssh )'
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan gitlab.q-software.com >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - dep deploy development
+  only:
+    - development
+  tags:
+    - skynetdocker
+
+composer:development:
+  stage: composer
+  environment:
+    name: development
+  script:
+    - cd $DOCROOT_BACKEND_STAGING/current
+    - /usr/bin/php8.1 /usr/bin/composer install
+    - /usr/bin/php8.1 artisan cache:clear --env=dev
+    - /usr/bin/php8.1 artisan migrate --no-interaction
+    - /usr/bin/php8.1 artisan db:seed
+  only:
+    - staging
+  tags:
+    - skynet
+
+phpmetrics:development:
+  stage: phpmetrics
+  environment:
+    name: development
+  script:
+    - /usr/bin/ansible-playbook /var/www/ansible/skynet-security-scan/playbook.yml -i /var/www/ansible/skynet-security-scan/hosts -e "domain_name=$SITE project_mode=development gitlab_user_email=$GITLAB_USER_EMAIL"
+  only:
+    - development
+  tags:
+    - skynet
+
+deploy:production:
+  image: pipelinecomponents/deployer:0.15.0
+  stage: deploy
+  environment:
+    name: production
+  before_script:
+    - 'command -v ssh-agent >/dev/null || ( apk add --update --no-cache openssh )'
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan gitlab.q-software.com >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - dep deploy production
+  only:
+    - main
+  tags:
+    - skynetdocker
+
+composer:production:
+  stage: composer
+  environment:
+    name: production
+  script:
+    - cd $DOCROOT_BACKEND_PRODUCTION/current
+    - /usr/bin/php8.1 /usr/bin/composer install
+    - /usr/bin/php8.1 artisan cache:clear --env=dev
+    - /usr/bin/php8.1 artisan migrate --no-interaction
+    - /usr/bin/php8.1 artisan db:seed
+    - /usr/bin/php8.1 artisan l5-swagger:generate
+  only:
+    - main
+  tags:
+    - skynet
+
+
+phpmetrics:production:
+  stage: phpmetrics
+  environment:
+    name: production
+  script:
+    - /usr/bin/ansible-playbook /var/www/ansible/skynet-security-scan/playbook.yml -i /var/www/ansible/skynet-security-scan/hosts -e "domain_name=$SITE project_mode=development gitlab_user_email=$GITLAB_USER_EMAIL"
+  only:
+    - main
+  tags:
+    - skynet

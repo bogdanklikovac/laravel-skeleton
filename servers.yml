@@ -1,0 +1,26 @@
+.config: &config
+  sshOptions:
+    UserKnownHostsFile: /dev/null
+    StrictHostKeyChecking: no
+  identity_file:
+    public_key:  ~/.ssh/id_rsa.pub
+    private_key: ~/.ssh/id_rsa
+    password: ''
+    
+development:
+  <<: *config
+  branch: development
+  stage: dev
+  laravel_env: local
+  deploy_path: /var/www/laravel-skeleton.q-tests.com
+  hostname: 213.186.16.163
+  user: www-data
+
+production:
+  <<: *config
+  branch: main
+  stage: prod
+  laravel_env: prod
+  deploy_path: /var/www/laravel-skeleton.q-tests.com
+  hostname: 213.186.16.163
+  user: www-data
